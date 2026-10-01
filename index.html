@@ -482,19 +482,43 @@
         }
 
         function startAutoScroll() {
+            if (autoScrollActive) return; // Prevent multiple loops
             autoScrollActive = true;
             document.getElementById('scrollIcon').className = 'fas fa-pause';
-            currentScrollY = window.scrollY;
             
-            function step() {
+            // Capture current scroll position reliably
+            currentScrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop;
+            
+            let lastTime = 0;
+            const pixelsPerSecond = 40; // Adjust speed here
+
+            function step(timestamp) {
                 if (!autoScrollActive) return;
                 
-                // Speed of scroll (0.8 pixels per frame = smooth slow panning)
-                currentScrollY += 0.8;
-                window.scrollTo(0, currentScrollY);
+                if (!lastTime) lastTime = timestamp;
+                const deltaTime = timestamp - lastTime;
+                
+                // Calculate scroll amount based on time passed for smooth cross-device speed
+                const scrollAmount = (pixelsPerSecond * deltaTime) / 1000;
+                currentScrollY += scrollAmount;
+                
+                // Use a more robust scrolling method
+                window.scrollTo({
+                    top: currentScrollY,
+                    behavior: 'instant' // Crucial for continuous rAF based scrolling
+                });
+                
+                lastTime = timestamp;
                 
                 // Stop automatically if we reach the bottom of the page
-                if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 5) {
+                // Adjusted calculation for better mobile compatibility
+                const scrollHeight = Math.max(
+                    document.body.scrollHeight, document.documentElement.scrollHeight,
+                    document.body.offsetHeight, document.documentElement.offsetHeight,
+                    document.body.clientHeight, document.documentElement.clientHeight
+                );
+                
+                if (window.innerHeight + currentScrollY >= scrollHeight - 10) {
                     autoScrollActive = false;
                     document.getElementById('scrollIcon').className = 'fas fa-play';
                     return;
@@ -516,13 +540,40 @@
             }
         }
 
-        // Pause auto-scroll if user manually scrolls with wheel or touch
-        window.addEventListener('wheel', () => {
-            if(autoScrollActive) toggleAutoScroll();
-        });
-        window.addEventListener('touchstart', () => {
-            if(autoScrollActive) toggleAutoScroll();
-        });
+        // Handle user interference gracefully
+        let scrollTimeout;
+        
+        function pauseAutoScrollTemporarily() {
+             if(autoScrollActive) {
+                 // Update the current scroll position so it doesn't jump back
+                 currentScrollY = window.scrollY || window.pageYOffset;
+                 
+                 // Clear previous timeout
+                 clearTimeout(scrollTimeout);
+                 
+                 // Pause visually
+                 autoScrollActive = false;
+                 cancelAnimationFrame(animationFrameId);
+                 document.getElementById('scrollIcon').className = 'fas fa-play';
+                 
+                 // Optional: Automatically resume after a delay if desired
+                 // Un-comment the next lines to auto-resume
+                 /*
+                 scrollTimeout = setTimeout(() => {
+                     startAutoScroll();
+                 }, 3000); // Resume after 3 seconds of inactivity
+                 */
+             }
+        }
+
+        // Listen for standard wheel scrolling
+        window.addEventListener('wheel', pauseAutoScrollTemporarily, { passive: true });
+        
+        // Listen for touch start to pause immediately
+        window.addEventListener('touchstart', pauseAutoScrollTemporarily, { passive: true });
+        
+        // Listen for touch move just in case
+        window.addEventListener('touchmove', pauseAutoScrollTemporarily, { passive: true });
 
 
         // --- 2. MUSIC TOGGLE ---
